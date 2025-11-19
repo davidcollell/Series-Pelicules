@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MediaItem, MediaStatus } from '../types';
 import { CheckIcon, ReplayIcon, TrashIcon, ClockIcon, TvIcon } from './icons';
 
@@ -23,10 +23,11 @@ const formatDuration = (totalMinutes: number | undefined) => {
 };
 
 const MediaCard: React.FC<MediaCardProps> = ({ item, onStatusChange, onDelete }) => {
+  const [showSeasons, setShowSeasons] = useState(false);
   const isWatched = item.status === MediaStatus.Watched;
 
   return (
-    <div className="bg-brand-surface rounded-lg overflow-hidden shadow-lg transition-transform transform hover:scale-105 duration-300 flex flex-col">
+    <div className="bg-brand-surface rounded-lg overflow-hidden shadow-lg transition-transform duration-300 hover:scale-[1.02] flex flex-col">
       <img className="w-full h-64 object-cover" src={item.posterUrl} alt={`Pòster de ${item.title}`} />
       <div className="p-4 flex flex-col flex-grow">
         <div className="flex justify-between items-start mb-2">
@@ -49,15 +50,42 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onStatusChange, onDelete })
                 </span>
             )}
             {item.type === 'Sèrie' && item.seasons && (
-                <span 
-                    className="inline-flex items-center rounded-full bg-teal-600 text-teal-100 px-3 py-1 font-semibold cursor-default"
-                    title={item.episodesPerSeason && item.episodesPerSeason.length > 0 ? `Episodis per temporada: ${item.episodesPerSeason.join(', ')}` : ''}
+                <button 
+                    onClick={() => setShowSeasons(!showSeasons)}
+                    className={`inline-flex items-center rounded-full px-3 py-1 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-brand-surface ${
+                        showSeasons 
+                        ? 'bg-teal-500 text-white ring-2 ring-teal-400' 
+                        : 'bg-teal-600 text-teal-100 hover:bg-teal-500'
+                    }`}
+                    title={showSeasons ? "Amagar detalls" : "Veure episodis per temporada"}
                 >
                     <TvIcon />
                     {item.seasons} {item.seasons > 1 ? 'temporades' : 'temporada'}
-                </span>
+                </button>
             )}
         </div>
+        
+        {/* Season Details Section */}
+        {showSeasons && item.type === 'Sèrie' && (
+            <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700 text-sm animate-fade-in">
+                <h4 className="text-brand-text-muted text-xs font-bold uppercase tracking-wider mb-2 border-b border-gray-700 pb-1">
+                    Episodis per temporada
+                </h4>
+                {item.episodesPerSeason && item.episodesPerSeason.length > 0 ? (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto pr-1">
+                        {item.episodesPerSeason.map((count, index) => (
+                            <div key={index} className="bg-brand-surface p-2 rounded text-center border border-gray-700 shadow-sm">
+                                <span className="block text-[10px] uppercase text-brand-text-muted">Temp {index + 1}</span>
+                                <span className="block font-bold text-brand-text">{count} eps</span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-gray-500 italic text-xs">Informació detallada no disponible.</p>
+                )}
+            </div>
+        )}
+
         <p className="text-brand-text-muted text-sm flex-grow">{item.description}</p>
         <div className="mt-4 pt-4 border-t border-gray-700 flex justify-between items-center">
           {isWatched ? (
@@ -84,6 +112,15 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onStatusChange, onDelete })
           </button>
         </div>
       </div>
+      <style>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(-5px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 };
