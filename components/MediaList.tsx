@@ -7,11 +7,12 @@ interface MediaListProps {
   items: MediaItem[];
   onStatusChange: (id: string, newStatus: MediaStatus) => void;
   onDelete: (id: string) => void;
+  onRatingChange: (id: string, rating: number) => void;
   title: string;
   emptyMessage: string;
 }
 
-const MediaList: React.FC<MediaListProps> = ({ items, onStatusChange, onDelete, title, emptyMessage }) => {
+const MediaList: React.FC<MediaListProps> = ({ items, onStatusChange, onDelete, onRatingChange, title, emptyMessage }) => {
   return (
     <div className="p-4">
       <h2 className="text-2xl font-bold mb-4 text-brand-text-muted">{title}</h2>
@@ -22,7 +23,13 @@ const MediaList: React.FC<MediaListProps> = ({ items, onStatusChange, onDelete, 
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {items.map((item) => (
-            <MediaCard key={item.id} item={item} onStatusChange={onStatusChange} onDelete={onDelete} />
+            <MediaCard 
+              key={item.id} 
+              item={item} 
+              onStatusChange={onStatusChange} 
+              onDelete={onDelete} 
+              onRatingChange={onRatingChange}
+            />
           ))}
         </div>
       )}

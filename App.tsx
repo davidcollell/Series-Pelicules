@@ -1,151 +1,218 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { MediaItem, MediaStatus } from './types';
 import { fetchMediaDetails } from './services/geminiService';
 import Header from './components/Header';
 import SearchForm from './components/SearchForm';
 import MediaList from './components/MediaList';
 import ConfirmationModal from './components/ConfirmationModal';
+import Toast from './components/Toast';
 
 const App: React.FC = () => {
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [activeTab, setActiveTab] = useState<MediaStatus>(MediaStatus.Watchlist);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<MediaItem | null>(null);
-
-  useEffect(() => {
-    try {
-      const storedItems = localStorage.getItem('mediaItems');
-      if (storedItems) {
-        setMediaItems(JSON.parse(storedItems));
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>(() => {
+    const saved = localStorage.getItem('mediaWatchlist');
+    let items: MediaItem[] = saved ? JSON.parse(saved) : [];
+    
+    // Migració de dades: Assegurar que tots els registres tenen imatge
+    // Si un element antic no té posterUrl, li assignem un de generat.
+    let hasChanges = false;
+    items = items.map(item => {
+      if (!item.posterUrl || item.posterUrl.trim() === '') {
+        hasChanges = true;
+        return {
+          ...item,
+          posterUrl: `https://image.pollinations.ai/prompt/movie%20poster%20key%20art%20for%20${encodeURIComponent(item.title)}%20${item.year}%20vertical%20high%20quality?width=400&height=600&nologo=true`
+        };
       }
-    } catch (e) {
-      console.error("Failed to load items from localStorage", e);
-    }
-  }, []);
+      return item;
+    });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('mediaItems', JSON.stringify(mediaItems));
-    } catch (e) {
-      console.error("Failed to save items to localStorage", e);
-    }
-  }, [mediaItems]);
-
-  const handleAddItem = useCallback(async (query: string) => {
-    if (mediaItems.some(item => item.title.toLowerCase() === query.toLowerCase())) {
-        setError("Aquest element ja és a la teva llista.");
-        setTimeout(() => setError(null), 3000);
-        return;
+    if (hasChanges) {
+       localStorage.setItem('mediaWatchlist', JSON.stringify(items));
     }
     
+    return items;
+  });
+  
+  const [activeTab, setActiveTab] = useState<MediaStatus>(MediaStatus.Watchlist);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [filterQuery, setFilterQuery] = useState<string>('');
+
+  useEffect(() => {
+    localStorage.setItem('mediaWatchlist', JSON.stringify(mediaItems));
+  }, [mediaItems]);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+  };
+
+  const handleAddItem = async (query: string) => {
     setIsLoading(true);
-    setError(null);
     try {
       const details = await fetchMediaDetails(query);
-      const newItem: MediaItem = {
-        id: new Date().toISOString(),
-        ...details,
-        posterUrl: `https://picsum.photos/seed/${details.title.replace(/\s/g, '')}/400/600`,
-        status: MediaStatus.Watchlist,
-      };
-      setMediaItems(prev => [newItem, ...prev]);
-      setActiveTab(MediaStatus.Watchlist);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("S'ha produït un error desconegut.");
+      
+      const exists = mediaItems.some(
+        (item) => item.title.toLowerCase() === details.title.toLowerCase()
+      );
+
+      if (exists) {
+        showToast(`"${details.title}" ja és a la teva llista.`);
+        setIsLoading(false);
+        return;
       }
-      setTimeout(() => setError(null), 5000);
+
+      // Utilitzar la URL trobada per Gemini, o generar-ne una si no n'hi ha.
+      let posterUrl = details.posterUrl;
+      if (!posterUrl || posterUrl.trim() === '') {
+         posterUrl = `https://image.pollinations.ai/prompt/movie%20poster%20key%20art%20for%20${encodeURIComponent(details.title)}%20${details.year}%20vertical%20high%20quality?width=400&height=600&nologo=true`;
+      }
+
+      const newItem: MediaItem = {
+        id: crypto.randomUUID(),
+        ...details,
+        status: MediaStatus.Watchlist,
+        posterUrl: posterUrl,
+      };
+
+      setMediaItems((prev) => [newItem, ...prev]);
+      showToast(`Afegit: ${newItem.title}`);
+    } catch (error) {
+      console.error(error);
+      showToast("Error en obtenir dades. Torna-ho a provar.");
     } finally {
       setIsLoading(false);
     }
-  }, [mediaItems]);
+  };
 
   const handleStatusChange = (id: string, newStatus: MediaStatus) => {
-    setMediaItems(prev =>
-      prev.map(item => (item.id === id ? { ...item, status: newStatus } : item))
+    setMediaItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, status: newStatus } : item))
+    );
+    const statusText = newStatus === MediaStatus.Watched ? "Vist" : "Per veure";
+    showToast(`Mogut a: ${statusText}`);
+  };
+
+  const handleRatingChange = (id: string, rating: number) => {
+    setMediaItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, userRating: rating } : item))
     );
   };
 
   const handleDeleteRequest = (id: string) => {
-    const item = mediaItems.find(i => i.id === id);
-    if (item) {
-      setItemToDelete(item);
+    setItemToDelete(id);
+  };
+
+  const confirmDelete = () => {
+    if (itemToDelete) {
+      const item = mediaItems.find((i) => i.id === itemToDelete);
+      setMediaItems((prev) => prev.filter((i) => i.id !== itemToDelete));
+      setItemToDelete(null);
+      if (item) showToast(`Eliminat: ${item.title}`);
     }
   };
 
-  const handleConfirmDelete = () => {
-    if (itemToDelete) {
-      setMediaItems(prev => prev.filter(item => item.id !== itemToDelete.id));
-      setItemToDelete(null);
-    }
-  };
-  
-  const handleCancelDelete = () => {
+  const cancelDelete = () => {
     setItemToDelete(null);
   };
 
+  const filteredItems = mediaItems.filter((item) => {
+    const matchesTab = item.status === activeTab;
+    if (!matchesTab) return false;
 
-  const filteredItems = useMemo(() => {
-    return mediaItems.filter(item => item.status === activeTab);
-  }, [mediaItems, activeTab]);
+    if (!filterQuery) return true;
 
-  const watchlistCount = useMemo(() => mediaItems.filter(item => item.status === MediaStatus.Watchlist).length, [mediaItems]);
-  const watchedCount = useMemo(() => mediaItems.filter(item => item.status === MediaStatus.Watched).length, [mediaItems]);
+    const query = filterQuery.toLowerCase();
+    const matchesSearch = 
+      item.title.toLowerCase().includes(query) ||
+      item.year.toString().includes(query) ||
+      (item.platform && item.platform.toLowerCase().includes(query));
+    
+    return matchesSearch;
+  });
   
-  const TabButton: React.FC<{tab: MediaStatus, count: number, label: string}> = ({tab, count, label}) => (
-    <button
-      onClick={() => setActiveTab(tab)}
-      className={`py-2 px-4 text-sm font-medium rounded-t-lg transition w-full ${
-        activeTab === tab 
-          ? 'border-b-2 border-brand-primary text-brand-primary' 
-          : 'text-brand-text-muted hover:bg-brand-surface'
-      }`}
-    >
-      {label} <span className="ml-1 bg-gray-700 text-xs font-bold rounded-full px-2 py-0.5">{count}</span>
-    </button>
-  );
+  const watchlistCount = mediaItems.filter(i => i.status === MediaStatus.Watchlist).length;
+  const watchedCount = mediaItems.filter(i => i.status === MediaStatus.Watched).length;
 
   return (
-    <div className="min-h-screen bg-brand-bg">
-      <div className="max-w-7xl mx-auto">
-        <Header />
-        <SearchForm onAddItem={handleAddItem} isLoading={isLoading} />
-        {error && (
-            <div className="p-4 mx-4 my-2 bg-red-900/50 text-red-200 border border-red-700 rounded-md">
-                <strong>Error:</strong> {error}
-            </div>
-        )}
-        <div className="border-b border-gray-800 px-4">
-          <div className="flex">
-            <TabButton tab={MediaStatus.Watchlist} count={watchlistCount} label="Pendents" />
-            <TabButton tab={MediaStatus.Watched} count={watchedCount} label="Vistes" />
-          </div>
-        </div>
+    <div className="min-h-screen pb-20">
+      <Header />
+      <SearchForm 
+        onAddItem={handleAddItem} 
+        isLoading={isLoading} 
+        onFilter={setFilterQuery}
+      />
 
-        <main>
-          <MediaList
-            items={filteredItems}
-            onStatusChange={handleStatusChange}
-            onDelete={handleDeleteRequest}
-            title={activeTab === MediaStatus.Watchlist ? "Al meu radar" : "Completades"}
-            emptyMessage={
-              activeTab === MediaStatus.Watchlist
-                ? "La teva llista de pendents és buida. Afegeix una pel·lícula o sèrie per començar!"
-                : "Encara no has marcat cap element com a vist."
-            }
-          />
-        </main>
-        {itemToDelete && (
-          <ConfirmationModal
-            itemTitle={itemToDelete.title}
-            onConfirm={handleConfirmDelete}
-            onCancel={handleCancelDelete}
-          />
-        )}
+      <div className="flex justify-center my-6 border-b border-gray-800 mx-4">
+        <button
+          onClick={() => setActiveTab(MediaStatus.Watchlist)}
+          className={`px-6 py-3 text-lg font-medium transition-colors relative flex items-center gap-2 ${
+            activeTab === MediaStatus.Watchlist
+              ? 'text-brand-primary'
+              : 'text-brand-text-muted hover:text-brand-text'
+          }`}
+        >
+          Per veure
+          <span className={`text-xs rounded-full px-2 py-0.5 ${
+            activeTab === MediaStatus.Watchlist 
+              ? 'bg-brand-primary/20 text-brand-primary' 
+              : 'bg-gray-800 text-gray-400'
+          }`}>
+            {watchlistCount}
+          </span>
+          {activeTab === MediaStatus.Watchlist && (
+            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-primary rounded-t-full"></span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab(MediaStatus.Watched)}
+          className={`px-6 py-3 text-lg font-medium transition-colors relative flex items-center gap-2 ${
+            activeTab === MediaStatus.Watched
+              ? 'text-brand-primary'
+              : 'text-brand-text-muted hover:text-brand-text'
+          }`}
+        >
+          Vistos
+          <span className={`text-xs rounded-full px-2 py-0.5 ${
+            activeTab === MediaStatus.Watched 
+              ? 'bg-brand-primary/20 text-brand-primary' 
+              : 'bg-gray-800 text-gray-400'
+          }`}>
+            {watchedCount}
+          </span>
+          {activeTab === MediaStatus.Watched && (
+            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-primary rounded-t-full"></span>
+          )}
+        </button>
       </div>
+
+      <MediaList
+        items={filteredItems}
+        onStatusChange={handleStatusChange}
+        onDelete={handleDeleteRequest}
+        onRatingChange={handleRatingChange}
+        title={activeTab === MediaStatus.Watchlist ? "Llista de seguiment" : "Historial de visualitzacions"}
+        emptyMessage={
+          filterQuery 
+            ? "No s'han trobat resultats per a la teva cerca."
+            : (activeTab === MediaStatus.Watchlist
+                ? "No tens res pendent. Afegeix la teva primera pel·lícula o sèrie!"
+                : "Encara no has marcat res com a vist.")
+        }
+      />
+
+      {itemToDelete && (
+        <ConfirmationModal
+          itemTitle={mediaItems.find((i) => i.id === itemToDelete)?.title || ''}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+        />
+      )}
+
+      {toastMessage && (
+        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+      )}
     </div>
   );
 };

@@ -15,4 +15,5 @@ export interface MediaItem {
   seasons?: number;
   episodesPerSeason?: number[];
   duration?: number;
+  userRating?: number;
 }
