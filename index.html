@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Control de Sèries i Pel·lícules</title>
+    <script>
+      // Polyfill per a process.env a Vercel/Navegador
+      window.process = window.process || { env: { API_KEY: undefined } };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
